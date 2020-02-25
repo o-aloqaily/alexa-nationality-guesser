@@ -75,11 +75,22 @@ func appendCountryCodes(response nationality.Response) []string {
 func buildGuessResponse(countries countries.Country, predictionsResponse nationality.Response) string {
 	// Build and send response using data above
 	var builder alexa.SSMLBuilder
-	builder.Say(fmt.Sprintf("There is a %d percent possibility you're %s,", int(predictionsResponse.Predictions[0].Probability*100), findCountryOfCode(countries, predictionsResponse.Predictions[0].Country_id)))
-	builder.Pause("500")
-	builder.Say(fmt.Sprintf("A chance of %d percent you're %s", int(predictionsResponse.Predictions[1].Probability*100), findCountryOfCode(countries, predictionsResponse.Predictions[1].Country_id)))
-	builder.Pause("500")
-	builder.Say(fmt.Sprintf("And %d percent likelihood you're %s", int(predictionsResponse.Predictions[2].Probability*100), findCountryOfCode(countries, predictionsResponse.Predictions[2].Country_id)))
+
+	if len(predictionsResponse.Predictions) == 0 {
+		// If no guesses are found for the name provided, return a message
+		builder.Say(fmt.Sprintf("Sorry, I couldn't guess your nationality based on the name you provided. Try again with your friends' names!"))
+	} else {
+		builder.Say("There is a")
+		// Otherwise, loop through guesses
+		for i, v := range predictionsResponse.Predictions {
+			// if it's the first guess, don't pause before saying it, otherwise do.
+			if i != 0 {
+				builder.Pause("500")
+			}
+			// Use information fetched to say a guess with a probability and a demonym
+			builder.Say(fmt.Sprintf("%d percent chance you're %s.", int(v.Probability*100), findCountryOfCode(countries, v.Country_id)))
+		}
+	}
 	return builder.Build()
 }
 
