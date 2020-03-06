@@ -4,6 +4,8 @@ import (
 	"alexa-skill-test/src/alexa"
 	"alexa-skill-test/src/countries"
 	"alexa-skill-test/src/nationality"
+	"alexa-skill-test/src/user"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -32,15 +34,23 @@ func HandleAboutIntent(request alexa.Request) alexa.Response {
 	return alexa.NewSimpleResponse("About", "Thanks for using me! I can guess your nationality based on your first name. After providing me with your name, I'll list some countries where you might be from, along with a probability for each of them!")
 }
 
-// HandlePredictIntent is the most important handler.
+// HandleGuessIntent is the most important handler.
 // It resolves any request asking for the main feature
 // of the skill which is guessing what nationality is the
 // person based on their name that they provided with the request.
 // A user can say:
 // Alexa, ask nationality guesser to guess my nationality, my name is Ethan
-func HandlePredictIntent(request alexa.Request) alexa.Response {
-	// extract first name of user from the request slots
-	firstName := getValueOfName(request.Body.Intent.Slots, "first_name")
+func HandleGuessIntent(request alexa.Request, usingLinkedAccount bool) alexa.Response {
+	var firstName string
+	if usingLinkedAccount {
+		// get name using user's linked account
+		firstName = fetchGivenName(request.Session.User.AccessToken)
+	} else {
+		// extract first name of user from the request slots
+		firstName = getValueOfName(request.Body.Intent.Slots, "first_name")
+	}
+
+	fmt.Println(firstName)
 
 	// fetch nationality guesses from the network for the name extracted above
 	// the API returns country codes for which the person might be from
@@ -55,7 +65,7 @@ func HandlePredictIntent(request alexa.Request) alexa.Response {
 
 	// Build and send response using data above
 	response := buildGuessResponse(countries, predictionsResponse)
-	return alexa.NewSSMLResponse("Nationality Guesser", response)
+	return alexa.NewSSMLResponse("Nationality Guess", response)
 }
 
 // API sending nationality guesses returns country codes for guesses
@@ -112,7 +122,20 @@ func findCountryOfCode(countries countries.Country, code string) string {
 func getValueOfName(array map[string]alexa.Slot, name string) string {
 	var firstName string
 	for _, v := range array {
-		if v.Name == "first_name" {
+		if v.Name == name {
+			firstName = v.Value
+		}
+	}
+	return firstName
+}
+
+// Given slots received with the request
+// getValueOfNameForUser returns slot value of the slot
+// having the struct field "Name" value equal to the string parameter "name"
+func getValueOfNameForUser(array []user.Attribute, name string) string {
+	var firstName string
+	for _, v := range array {
+		if v.Name == name {
 			firstName = v.Value
 		}
 	}
@@ -157,6 +180,35 @@ func fetchCountriesOfCodes(countryCodes []string) countries.Country {
 	return countries
 }
 
+// fetchGivenName calls Cognito API with AccessToken provided in
+// the request received from alexa to get the
+// given (first) name of the user.
+func fetchGivenName(accessToken string) string {
+	values := map[string]string{"AccessToken": accessToken}
+	jsonValue, _ := json.Marshal(values)
+
+	req, err := http.NewRequest("POST", "https://cognito-idp.us-east-2.amazonaws.com/", bytes.NewBuffer(jsonValue))
+	if err != nil {
+		log.Fatal("Error reading request. ", err)
+	}
+	req.Header.Set("Content-Type", "application/x-amz-json-1.1")
+	req.Header.Set("Content-Length", "1162")
+	req.Header.Set("X-Amz-Target", "AWSCognitoIdentityProviderService.GetUser")
+	req.Header.Set("Content-Length", "1162")
+	client := http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Fatal("Error reading response. ", err)
+	}
+
+	responseData, err := ioutil.ReadAll(resp.Body)
+	var userData user.User
+	json.Unmarshal(responseData, &userData)
+
+	return getValueOfNameForUser(userData.Attributes, "given_name")
+
+}
+
 // Handler is the first function that lambda calls when a request to the skill is made
 func Handler(request alexa.Request) (alexa.Response, error) {
 	return IntentDispatcher(request), nil
@@ -170,8 +222,10 @@ func IntentDispatcher(request alexa.Request) alexa.Response {
 		response = HandleHelpIntent(request)
 	case "AboutIntent":
 		response = HandleAboutIntent(request)
-	case "PredictIntent":
-		response = HandlePredictIntent(request)
+	case "GuessIntent":
+		response = HandleGuessIntent(request, false)
+	case "GuessWithAccountIntent":
+		response = HandleGuessIntent(request, true)
 	default:
 		response = HandleAboutIntent(request)
 	}
