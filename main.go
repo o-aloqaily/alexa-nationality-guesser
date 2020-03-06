@@ -24,7 +24,9 @@ func HandleHelpIntent(request alexa.Request) alexa.Response {
 	var builder alexa.SSMLBuilder
 	builder.Say("You can ask me like so:")
 	builder.Pause("1000")
-	builder.Say("My name is Ethan, where am I from?")
+	builder.Say("Alexa, ask the genie to guess my nationality using my linked account")
+	builder.Say("or, ")
+	builder.Say("Alexa, ask the genie to guess my nationality. my name is Ethan")
 	return alexa.NewSSMLResponse("Help", builder.Build())
 }
 
